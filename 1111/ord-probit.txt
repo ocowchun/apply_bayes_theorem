@@ -1,0 +1,94 @@
+# File: Albert and Chib (Ordered Probit).r
+# Generate Orderd Categorical Data and Run Gibbs Sampler Using A&C Section 4.1
+# CUMULATIVE PROBIT MODEL: pr(class j)=phi(gamma_j -X%*%beta) 
+# 		Note: higher beta --> more likely to be in higher class
+# April 7, 2009
+##################################
+install.packages("mvtnorm")
+install.packages("msm")
+library(mvtnorm)
+library(MASS)  				# For polr function
+library(msm)				# For rtnorm function
+# Simulate data
+ set.seed(250)
+ n<-1000				# Sample Size
+ gam1<-0				# Fix at 0 for identifiability
+ gam2<-1.5
+ beta<-c(.75,-.5)			# Parms
+ x<-sample(0:4,n,replace=T)		# Covariates
+ X<-matrix(c(rep(1,n),x), ncol=2)   	# Design matrix
+ eta<-X%*%beta				 
+ 
+ z<-rnorm(n,eta,1)
+ y<-rep(0,n)
+ y[z<=gam1]<-1
+ y[gam1<z& z<=gam2]<-2
+ y[gam2<z]<-3
+ ns<-table(y)	 			# Sample size in each category (for rtnorm function)
+
+# Priors on Beta=c(alpha, beta)
+  mbeta0<-c(0,0)			# Prior Mean for Beta
+  vbeta0<-diag(10,2)			# Prior Cov of Beta (vague)
+
+#Initial Values
+  gam2<-3
+  beta<-c(0,0)
+
+# Create vectors to store results
+  nsim<-10000
+  z<-rep(0,n)				# Latent Normal Variable
+  Beta<-matrix(0,nrow=nsim,ncol=2)
+  Gam2<-rep(0,nsim)
+
+# Posterior Variance of Beta (Can update outside of sampler)
+  prec0<-solve(vbeta0)
+  vbeta<-solve(prec0+crossprod(X,X))
+
+###################
+# GIBBS SAMPLER	  #
+###################
+tmp<-proc.time()
+for (i in 1:nsim) {
+
+ # Draw Latent Variable, z, from its full conditional
+   muz<-X%*%beta						# Update Mean of Z
+   
+   # Using rtnorm function (SLOWER)
+     #z[y==1]<-rtnorm(ns[1],muz[y==1],1,upper=gam1) 		# Where gam1=0
+     #z[y==2]<-rtnorm(ns[2],muz[y==2],1,lower=gam1,upper=gam2) 
+     #z[y==3]<-rtnorm(ns[3],muz[y==3],1,lower=gam2) 
+
+   # Using inverse CDF method
+     z[y==1]<-qnorm(runif(n,0,pnorm(gam1,muz,1)),muz,1)[y==1]
+     z[y==2]<-qnorm(runif(n,pnorm(gam1,muz,1),pnorm(gam2,muz,1)),muz,1)[y==2]
+     z[y==3]<-qnorm(runif(n,pnorm(gam2,muz,1),1),muz,1)[y==3]
+ 
+ # Update Gamma (Recall, Gam1 = 0 for identifiability)
+   Gam2[i]<-gam2<-runif(1,max(max(z[y==2]),gam1),min(z[y==3]))  # Recall, gam1=0 here
+								# In general, gam_{j-1} may not = 0
+ # Posterior mean of Beta|Z
+   mbeta <- vbeta%*%(prec0%*%mbeta0+crossprod(X,z))
+
+ # Draw Beta=c(alpha,beta) from its full conditional
+   Beta[i,]<-beta<-c(rmvnorm(1,mbeta,vbeta))
+  
+   if(i%%100==0) print(i)
+ }
+
+proc.time()-tmp
+
+# Get Summaries
+mean.beta<-apply(Beta[5001:nsim,],2,mean)
+mean.gam<-mean(Gam2[5001:nsim])
+
+int1<-0-mean.beta[1]        # Int1 = gamma_1 - beta[1], where gamma_1 = 0
+int2<-mean.gam-mean.beta[1]  # Int2 = gamma_2 - beta[1], where gamma_2 = 1 (estimated as mean.gam)
+
+# Compare Estimates
+polr(as.factor(y)~x,method="probit")
+c(int1,int2,beta[2])
+
+# Trace Plots
+par(mfrow=c(2,1))
+plot(5001:nsim,Gam2[5001:nsim],type="l",col="lightgreen")  # slow convergence
+plot(5001:nsim,Beta[5001:nsim,2],type="l",col="lightgreen")
