@@ -13,7 +13,7 @@ mu.hat=function(tau,y,sigma.y){
 }
 
 V.mu=function(tau,y,sigma.y){
-	1/sum(1/tau^2+sigma.y^2)
+	1/sum(1/(tau^2+sigma.y^2))
 }
 
 n.grid=2000
@@ -39,5 +39,6 @@ for(i in 1:n.sims){
 	theta.sd=sqrt(1/(1/tau[i]^2+1/sigma.y^2))
 	theta[i,]=rnorm(J,theta.mean,theta.sd)
 }
-plot(c(0,30),c(0, max(p.tau)),type='n', ylim=c(0,max(p.tau)), yaxs="i", xlim=c(0,30), xaxs="i")
-lines(tau.grid,p.tau,ylim=c(2,3),col='red', xlim=c(0.01,10))
+# 另外,  要使機率為1的話, p.tau 要乘以 2000/40 (=50);
+plot(c(0,30),c(0, max(p.tau*2000/40)),type='n', ylim=c(0,max(p.tau*2000/40)), yaxs="i", xlim=c(0,30), xaxs="i")
+lines(tau.grid,p.tau*2000/40,ylim=c(2,3),col='red', xlim=c(0.01,10))
